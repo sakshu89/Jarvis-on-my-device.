@@ -20,8 +20,9 @@ import kotlin.coroutines.resume
 object UiDriver {
     // JARVIS refuses to read or operate these (security by design, not bypassed).
     private val BLOCKED = listOf(
-        "bank", "paytm", "phonepe", "paisa", "upi", "wallet",
-        "bitwarden", "lastpass", "1password", "keepass", "authenticator"
+        "bank", "paytm", "phonepe", "paisa", "upi", "wallet", "pay", "bhim", "mobikwik", "freecharge", "npci", "zerodha", "groww",
+"bitwarden", "lastpass", "1password", "keepass", "authenticator"
+        
     )
 
     private val svc get() = JarvisAccessibilityService.instance
