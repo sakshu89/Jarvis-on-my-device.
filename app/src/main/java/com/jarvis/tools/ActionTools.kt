@@ -10,7 +10,9 @@ import com.jarvis.agent.Tool
 import com.jarvis.agent.ToolResult
 import com.jarvis.agent.fail
 import com.jarvis.agent.ok
+import com.jarvis.accessibility.UiDriver
 import com.jarvis.ai.Http
+import kotlinx.coroutines.delay
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -42,12 +44,12 @@ class TimeDateTool : Tool {
     }
 }
 
-/** Plays a song/video on YouTube (or YouTube Music). Best effort: resolves the first real video of a search. */
+/** Plays a song/video on YouTube (or YouTube Music). Resolves the first real video; falls back to clicking the first result. */
 class PlayMediaTool(private val ctx: Context) : Tool {
     override val name = "play_media"
     override val description =
         "Play a song or video on YouTube or YouTube Music. args: {\"query\":\"song / artist / video name\",\"app\":\"youtube|youtube_music (default youtube)\"}"
-    override val timeoutMs = 25_000L
+    override val timeoutMs = 45_000L
 
     override suspend fun execute(args: JSONObject): ToolResult {
         val q = args.optString("query").trim()
@@ -69,21 +71,37 @@ class PlayMediaTool(private val ctx: Context) : Tool {
             if (ctx.launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$id"))))
                 return ok("Playing \"$q\" on YouTube (in the browser, the YouTube app is not installed).")
         }
-        // Could not resolve a video (offline / YouTube page changed): open the search results instead.
-        val search = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(q)))
-        return if (ctx.launch(search)) ok("I opened YouTube search results for \"$q\"; tap the video you want.")
-        else fail("I could not open YouTube.")
+
+        // Could not resolve a video id: open the search results in the YouTube app, then click the first video.
+        val url = "https://www.youtube.com/results?search_query=" + Uri.encode(q)
+        val opened = ctx.launch(Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage(YT)) ||
+            ctx.launch(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        if (!opened) return fail("I could not open YouTube.")
+
+        if (UiDriver.available) {
+            delay(3500)
+            repeat(5) {
+                val node = UiDriver.visible().firstOrNull { UiDriver.label(it).lowercase().contains("play video") }
+                if (node != null && UiDriver.click(node)) return ok("Playing \"$q\" on YouTube.")
+                delay(1500)
+            }
+        }
+        return ok("I opened YouTube search results for \"$q\"; tap the video you want. (Turn on the JARVIS accessibility service so I can tap it for you.)")
     }
 
-    /** First regular video (not an ad, Short or playlist) of the YouTube results page. No API key needed. */
+    /** First regular video of the YouTube results page. No API key needed. */
     private suspend fun findVideoId(q: String): String? = try {
         val html = Http.request(
             "GET", "https://www.youtube.com/results?search_query=" + Uri.encode(q),
-            mapOf("User-Agent" to "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36",
-                "Accept-Language" to "en-US,en;q=0.9"),
-            timeoutMs = 12_000
+            mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                "Accept-Language" to "en-US,en;q=0.9",
+                "Cookie" to "CONSENT=YES+1; SOCS=CAI"
+            ),
+            timeoutMs = 8_000
         )
         Regex("\"videoRenderer\":\\{\"videoId\":\"([A-Za-z0-9_-]{11})\"").find(html)?.groupValues?.get(1)
+            ?: Regex("\"videoId\":\"([A-Za-z0-9_-]{11})\"").find(html)?.groupValues?.get(1)
     } catch (_: Exception) { null }
 }
 
