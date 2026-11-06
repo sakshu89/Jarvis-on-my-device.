@@ -31,12 +31,24 @@ object FastPath {
     private val openA = Regex("^(?:open|launch|start|kholo|khol do|खोलो)\\s+(.+)$", I)
     private val openB = Regex("^(.+?)\\s+(?:kholo|khol do|khol de|open karo|open kar do|खोलो|खोल दो)$", I)
 
+    private val openPlayYt = Regex("^open (?:youtube|yt)(?: music)?\\s+and\\s+play\\s+(.+)$", I)
+    private val alarmA = Regex("^(?:can you |please )*set (?:an? )?alarm (?:for|at|of)?\\s*(?:today |tomorrow )?(\\d{1,2})(?::(\\d{2}))?\\s*([ap])\\.?m\\.?(?:\\s+today)?$", I)
+
     private val timerA = Regex("^(?:set\\s+)?(?:a\\s+)?timer\\s+(?:for\\s+)?(\\d+)\\s*(second|sec|minute|min|hour|hr)s?$", I)
     private val timerB = Regex("^(\\d+)\\s*(second|sec|minute|min|hour|hr)s?\\s+ka\\s+timer(?:\\s+(?:laga do|set karo|lagao))?$", I)
 
     fun match(textRaw: String): Match? {
         val t = textRaw.trim().trim('.', '!', '?', ',', '।').replace(Regex("\\s+"), " ")
-        if (t.isEmpty() || t.length > 120 || multi.containsMatchIn(t)) return null
+        if (t.isEmpty() || t.length > 120) return null
+        openPlayYt.find(t)?.let { return play(it.groupValues[1], "") }
+        if (multi.containsMatchIn(t)) return null
+
+        alarmA.find(t)?.let {
+            var h = it.groupValues[1].toInt() % 12
+            if (it.groupValues[3].lowercase() == "p") h += 12
+            val m = it.groupValues[2].ifBlank { "0" }.toInt()
+            return Match("set_alarm", JSONObject().put("hour", h).put("minute", m))
+        }
 
         if (timeQ.containsMatchIn(t) || dateQ.containsMatchIn(t)) return Match("time_date", JSONObject())
 
