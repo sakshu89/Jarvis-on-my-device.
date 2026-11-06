@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +55,12 @@ fun JarvisRoot(vm: JarvisViewModel) {
         if (vm.micGranted()) vm.onMic() else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 
+    // Ambient mode: while JARVIS is ON show only the black, landscape, centred core + STOP.
+    var ambient by rememberSaveable { mutableStateOf(true) }
+    LaunchedEffect(vm.powered) { if (vm.powered) ambient = true }
+    val showAmbient = vm.powered && ambient && g.settings.ambientMode
+
+    if (showAmbient) AmbientScreen(vm, profile, onMic) { ambient = false } else
     Column(Modifier.fillMaxSize().background(Jx.bg).statusBarsPadding().navigationBarsPadding()) {
         // HUD top bar
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -64,7 +73,13 @@ fun JarvisRoot(vm: JarvisViewModel) {
                     Chip(profile.name.uppercase(), true)
                 }
             }
-            HudButton("■ STOP", { vm.emergencyStop() }, color = Jx.red, filled = true)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (vm.powered && g.settings.ambientMode) {
+                    HudButton("◉ AMBIENT", { ambient = true })
+                    Spacer(Modifier.width(8.dp))
+                }
+                HudButton("■ STOP", { vm.emergencyStop() }, color = Jx.red, filled = true)
+            }
         }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
