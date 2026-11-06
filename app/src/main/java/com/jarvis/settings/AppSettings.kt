@@ -93,6 +93,39 @@ class AppSettings(private val s: SecureStore) {
         get() = s.str("orb_style", "plasma")
         set(v) = s.putStr("orb_style", v)
 
+    /** Full-screen black landscape core while JARVIS is ON (only STOP is shown). */
+    var ambientMode: Boolean
+        get() = s.bool("ambient", true)
+        set(v) = s.putBool("ambient", v)
+
+    /** Custom cloud voice: any OpenAI-compatible /audio/speech server (OpenAI, Groq, Kokoro, Piper servers...). */
+    var customTtsOn: Boolean
+        get() = s.bool("ctts_on", false)
+        set(v) = s.putBool("ctts_on", v)
+    var customTtsBase: String
+        get() = s.str("ctts_base")
+        set(v) = s.putStr("ctts_base", v.trim())
+    var customTtsKey: String
+        get() = s.str("ctts_key")
+        set(v) = s.putStr("ctts_key", v.trim())
+    var customTtsModel: String
+        get() = s.str("ctts_model", "tts-1")
+        set(v) = s.putStr("ctts_model", v.trim().ifBlank { "tts-1" })
+    var customTtsVoice: String
+        get() = s.str("ctts_voice", "alloy")
+        set(v) = s.putStr("ctts_voice", v.trim().ifBlank { "alloy" })
+
+    /** Phone (Android TTS) voice name, speed and pitch. Blank name = system default. */
+    var phoneVoice: String
+        get() = s.str("phone_voice")
+        set(v) = s.putStr("phone_voice", v.trim())
+    var phoneRate: String
+        get() = s.str("phone_rate", "1.0")
+        set(v) = s.putStr("phone_rate", v)
+    var phonePitch: String
+        get() = s.str("phone_pitch", "1.0")
+        set(v) = s.putStr("phone_pitch", v)
+
     var firstRunDone: Boolean
         get() = s.bool("first_run_done", false)
         set(v) = s.putBool("first_run_done", v)
