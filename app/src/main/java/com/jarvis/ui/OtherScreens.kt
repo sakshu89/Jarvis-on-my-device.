@@ -1,5 +1,8 @@
 package com.jarvis.ui
 
+import androidx.compose.runtime.DisposableEffect
+import android.speech.tts.TextToSpeech
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
@@ -139,6 +142,32 @@ private fun Field(label: String, value: String, secret: Boolean = false, onChang
 }
 
 @Composable
+private fun PhoneVoicePicker(current: String, onPick: (String) -> Unit) {
+    val ctx = LocalContext.current
+    val ttsRef = remember { arrayOfNulls<TextToSpeech>(1) }
+    var label by remember { mutableStateOf(current) }
+    DisposableEffect(Unit) {
+        ttsRef[0] = TextToSpeech(ctx.applicationContext) { }
+        onDispose { ttsRef[0]?.shutdown(); ttsRef[0] = null }
+    }
+    Mono("Phone voice: " + label.ifBlank { "system default" }, Jx.text, 12)
+    HudButton("TRY NEXT PHONE VOICE", {
+        val t = ttsRef[0]
+        val list = (t?.voices ?: emptySet()).filter { it.locale.language == "en" || it.locale.language == "hi" }.sortedBy { it.name }
+        if (t == null || list.isEmpty()) {
+            label = "none found (install a voice engine below)"
+        } else {
+            val idx = list.indexOfFirst { it.name == label }
+            val v = list[(idx + 1).mod(list.size)]
+            t.voice = v
+            label = v.name
+            onPick(v.name)
+            t.speak("Hello, I am JARVIS. How can I help you?", TextToSpeech.QUEUE_FLUSH, null, "try-voice")
+        }
+    }, Modifier.fillMaxWidth())
+}
+
+@Composable
 fun SettingsScreen(onSaved: () -> Unit) {
     val g = LocalContext.current.graph
     val s = g.settings
@@ -163,6 +192,15 @@ fun SettingsScreen(onSaved: () -> Unit) {
     var elKey by remember { mutableStateOf(s.elevenKey) }
     var elVoice by remember { mutableStateOf(s.elevenVoiceId) }
     var elModel by remember { mutableStateOf(s.elevenModel) }
+    var ctOn by remember { mutableStateOf(s.customTtsOn) }
+    var ctBase by remember { mutableStateOf(s.customTtsBase) }
+    var ctKey by remember { mutableStateOf(s.customTtsKey) }
+    var ctModel by remember { mutableStateOf(s.customTtsModel) }
+    var ctVoice by remember { mutableStateOf(s.customTtsVoice) }
+    var phoneVoice by remember { mutableStateOf(s.phoneVoice) }
+    var phoneRate by remember { mutableStateOf(s.phoneRate) }
+    var phonePitch by remember { mutableStateOf(s.phonePitch) }
+    var ambient by remember { mutableStateOf(s.ambientMode) }
     var hands by remember { mutableStateOf(s.handsFree) }
     var wakePath by remember { mutableStateOf(s.wakeModelPath) }
     var wakeMsg by remember { mutableStateOf("") }
@@ -235,6 +273,35 @@ fun SettingsScreen(onSaved: () -> Unit) {
         Field("Model", elModel) { elModel = it }
         Mono("Needs internet and uses your ElevenLabs character quota. If it fails or you are offline, JARVIS falls back to the phone's own voice. Model eleven_flash_v2_5 is fast and speaks Hindi + English.", Jx.dim, 11)
 
+        SectionTitle("CUSTOM VOICE (ANY TTS SERVER)")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Mono("Use custom voice server", Jx.text, 13, modifier = Modifier.weight(1f))
+            Switch(ctOn, { ctOn = it }, colors = SwitchDefaults.colors(checkedTrackColor = Jx.cyan))
+        }
+        Field("Base URL (https://... or http://127.0.0.1:PORT/v1)", ctBase) { ctBase = it }
+        Field("API key (optional)", ctKey, true) { ctKey = it }
+        Field("Model", ctModel) { ctModel = it }
+        Field("Voice name / ID", ctVoice) { ctVoice = it }
+        Mono("Works with any OpenAI-compatible /audio/speech server: OpenAI, Groq, Kokoro, Piper (openedai-speech) on your PC or in Termux, and others. Priority: custom voice, then ElevenLabs, then the phone voice. If a voice fails, JARVIS falls back automatically.", Jx.dim, 11)
+
+        SectionTitle("PHONE VOICE (ANY INSTALLED ENGINE)")
+        PhoneVoicePicker(phoneVoice) { phoneVoice = it }
+        Mono("Speed", Jx.dim, 12)
+        ChoiceRow(listOf("0.85" to "SLOW", "1.0" to "NORMAL", "1.2" to "FAST"), phoneRate) { phoneRate = it }
+        Mono("Pitch (DEEP sounds more like JARVIS)", Jx.dim, 12)
+        ChoiceRow(listOf("0.8" to "DEEP", "1.0" to "NORMAL", "1.2" to "HIGH"), phonePitch) { phonePitch = it }
+        HudButton("INSTALL / CHOOSE VOICE ENGINE", {
+            runCatching { appCtx.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        }, Modifier.fillMaxWidth())
+        Mono("Install any text-to-speech app (Google, Samsung, RHVoice, Piper, Sherpa...) from the Play Store or F-Droid, pick it in the phone's TTS settings, then step through its voices above.", Jx.dim, 11)
+
+        SectionTitle("AMBIENT MODE")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Mono("Full-screen black landscape core while ON", Jx.text, 13, modifier = Modifier.weight(1f))
+            Switch(ambient, { ambient = it }, colors = SwitchDefaults.colors(checkedTrackColor = Jx.cyan))
+        }
+        Mono("Only the STOP button is visible. Tap the core to speak. Press Back to show the controls; tap AMBIENT in the top bar to return.", Jx.dim, 11)
+
         SectionTitle("VOICE")
         Mono("Listening language", Jx.dim, 12)
         ChoiceRow(listOf("en-IN" to "ENGLISH / HINGLISH", "hi-IN" to "HINDI"), stt) { stt = it }
@@ -256,6 +323,8 @@ fun SettingsScreen(onSaved: () -> Unit) {
 
         HudButton(if (saved) "SAVED ✓" else "SAVE", {
             s.elevenEnabled = elOn; s.elevenKey = elKey; s.elevenVoiceId = elVoice; s.elevenModel = elModel
+            s.customTtsOn = ctOn; s.customTtsBase = ctBase; s.customTtsKey = ctKey; s.customTtsModel = ctModel; s.customTtsVoice = ctVoice
+            s.phoneVoice = phoneVoice; s.phoneRate = phoneRate; s.phonePitch = phonePitch; s.ambientMode = ambient
             s.handsFree = hands; s.orbStyle = orbStyle; s.localTemplate = template; s.localMaxTokens = ctxTokens.toIntOrNull() ?: 4096
             s.provider = provider; s.geminiKey = gKey; s.geminiModel = gModel
             s.openAiKey = oKey; s.openAiBase = oBase; s.openAiModel = oModel
