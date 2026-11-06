@@ -13,6 +13,7 @@ import android.speech.tts.UtteranceProgressListener
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
+import com.jarvis.ai.isLocalUrl
 import com.jarvis.app.graph
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -153,6 +154,24 @@ class VoiceOutput(ctx: Context) : TextToSpeech.OnInitListener {
         val clean = text.replace(Regex("[\\p{So}\\p{Cs}\\uFE0F\\u200D]"), "").trim()
         if (clean.isEmpty()) { speaking.value = false; return }
         val st = appCtx.graph.settings
+        if (st.customTtsOn && st.customTtsBase.isNotBlank()) {
+            stop()
+            speaking.value = true
+            val base = st.customTtsBase; val key = st.customTtsKey; val model = st.customTtsModel; val voice = st.customTtsVoice
+            elevenJob = scope.launch {
+                try {
+                    val f = fetchCustom(clean.take(1500), base, key, model, voice)
+                    play(f)
+                    speaking.value = false
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    notice.value = "Custom voice failed (${e.message}). Using the phone voice instead."
+                    speakLocal(clean, lang)
+                }
+            }
+            return
+        }
         if (st.elevenEnabled && st.elevenKey.isNotBlank()) {
             stop()
             speaking.value = true
@@ -205,6 +224,36 @@ class VoiceOutput(ctx: Context) : TextToSpeech.OnInitListener {
         }
     }
 
+    /** Any OpenAI-compatible text-to-speech server: POST {base}/audio/speech -> mp3. */
+    private suspend fun fetchCustom(text: String, base: String, key: String, model: String, voice: String): File = withContext(Dispatchers.IO) {
+        if (!base.startsWith("https://") && !isLocalUrl(base)) throw IOException("the URL must start with https:// (http:// only for a server on this phone)")
+        val c = URL(base.trimEnd('/') + "/audio/speech").openConnection() as HttpURLConnection
+        try {
+            c.requestMethod = "POST"
+            c.connectTimeout = 10_000
+            c.readTimeout = 60_000
+            if (key.isNotBlank()) c.setRequestProperty("Authorization", "Bearer $key")
+            c.setRequestProperty("Content-Type", "application/json")
+            c.doOutput = true
+            val body = JSONObject().put("model", model).put("input", text).put("voice", voice).put("response_format", "mp3")
+            c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = c.responseCode
+            if (code !in 200..299) {
+                throw IOException(when (code) {
+                    401, 403 -> "the API key was rejected"
+                    404 -> "endpoint, model or voice not found"
+                    402, 429 -> "quota or rate limit reached"
+                    else -> "HTTP $code"
+                })
+            }
+            val f = File.createTempFile("tts", ".mp3", appCtx.cacheDir)
+            c.inputStream.use { i -> f.outputStream().use { i.copyTo(it) } }
+            f
+        } finally {
+            c.disconnect()
+        }
+    }
+
     private suspend fun play(f: File) = suspendCancellableCoroutine<Unit> { cont ->
         val mp = MediaPlayer()
         val done = AtomicBoolean(false)
@@ -239,6 +288,10 @@ class VoiceOutput(ctx: Context) : TextToSpeech.OnInitListener {
         val loc = if (lang == "hi") Locale("hi", "IN") else Locale("en", "IN")
         val r = t.setLanguage(loc)
         if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) t.setLanguage(Locale.US)
+        val st = appCtx.graph.settings
+        t.setSpeechRate(st.phoneRate.toFloatOrNull() ?: 1f)
+        t.setPitch(st.phonePitch.toFloatOrNull() ?: 1f)
+        if (st.phoneVoice.isNotBlank()) runCatching { t.voices?.firstOrNull { it.name == st.phoneVoice }?.let { t.voice = it } }
         t.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "jarvis-${System.nanoTime()}")
     }
 
