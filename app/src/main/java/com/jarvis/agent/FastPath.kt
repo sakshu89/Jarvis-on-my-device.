@@ -34,12 +34,34 @@ object FastPath {
     private val openPlayYt = Regex("^open (?:youtube|yt)(?: music)?\\s+and\\s+play\\s+(.+)$", I)
     private val alarmA = Regex("^(?:can you |please )*set (?:an? )?alarm (?:for|at|of)?\\s*(?:today |tomorrow )?(\\d{1,2})(?::(\\d{2}))?\\s*([ap])\\.?m\\.?(?:\\s+today)?$", I)
 
+    private val APPS = "(whats ?app|telegram|instagram|insta|snapchat|snap)"
+    private val SAY = "(?:saying|say|that|:)"
+    private val msgC = Regex("^(?:on|in)\\s+$APPS\\s+(?:send (?:a |an )?(?:message|msg|text)\\s+to|message|msg|text)\\s+(.+?)\\s+$SAY\\s*(.+)$", I)
+    private val msgA = Regex("^(?:send (?:a |an )?(?:message|msg|text)\\s+to|message|msg|text|whats ?app)\\s+(.+?)\\s+(?:on|in|via)\\s+$APPS\\s+(?:$SAY\\s*)?(.+)$", I)
+    private val msgHi = Regex("^(.+?)\\s+ko\\s+(?:whats ?app\\s+)?(?:message|msg)\\s+(?:bhejo|karo|send karo|bhej do)\\s+(?:ki\\s+)?(.+)$", I)
+    private val msgB = Regex("^(?:send (?:a |an )?(?:message|msg|text)\\s+to|message|msg|text|whats ?app)\\s+(.+?)\\s+$SAY\\s*(.+)$", I)
+
+    private val lockQ = Regex("^(?:please )?(?:lock (?:the |my )?(?:phone|screen|device|mobile)|(?:phone|screen|mobile) lock(?: kar do| karo| kar de)?|lock kar do|lock it)$", I)
+    private val unlockQ = Regex("^(?:please )?(?:unlock (?:the |my )?(?:phone|screen|device|mobile)|(?:wake|turn on) (?:up )?(?:the |my )?(?:phone|screen)|(?:phone|screen|mobile) unlock(?: kar do| karo| kar de)?|unlock kar do|screen on kar do)$", I)
+    private val callA = Regex("^(?:please )?(?:call|phone|dial|ring)\\s+(.+)$", I)
+    private val callB = Regex("^(.+?)\\s+ko\\s+(?:phone |call )(?:karo|kar do|lagao|laga do|milao)$", I)
+
     private val timerA = Regex("^(?:set\\s+)?(?:a\\s+)?timer\\s+(?:for\\s+)?(\\d+)\\s*(second|sec|minute|min|hour|hr)s?$", I)
     private val timerB = Regex("^(\\d+)\\s*(second|sec|minute|min|hour|hr)s?\\s+ka\\s+timer(?:\\s+(?:laga do|set karo|lagao))?$", I)
 
     fun match(textRaw: String): Match? {
         val t = textRaw.trim().trim('.', '!', '?', ',', '।').replace(Regex("\\s+"), " ")
-        if (t.isEmpty() || t.length > 120) return null
+        if (t.isEmpty()) return null
+
+        // Messages: one step, no LLM. send_message itself previews the text and asks you to confirm before sending.
+        if (t.length <= 400) {
+            msgC.find(t)?.let { return msg(it.groupValues[1], it.groupValues[2], it.groupValues[3]) }
+            msgA.find(t)?.let { return msg(it.groupValues[2], it.groupValues[1], it.groupValues[3]) }
+            msgHi.find(t)?.let { return msg("whatsapp", it.groupValues[1], it.groupValues[2]) }
+            msgB.find(t)?.let { return msg("whatsapp", it.groupValues[1], it.groupValues[2]) }
+        }
+
+        if (t.length > 120) return null
         openPlayYt.find(t)?.let { return play(it.groupValues[1], "") }
         if (multi.containsMatchIn(t)) return null
 
@@ -49,6 +71,11 @@ object FastPath {
             val m = it.groupValues[2].ifBlank { "0" }.toInt()
             return Match("set_alarm", JSONObject().put("hour", h).put("minute", m))
         }
+
+        if (lockQ.containsMatchIn(t)) return Match("lock_phone", JSONObject())
+        if (unlockQ.containsMatchIn(t)) return Match("unlock_phone", JSONObject())
+        callA.find(t)?.let { return call(it.groupValues[1]) }
+        callB.find(t)?.let { return call(it.groupValues[1]) }
 
         if (timeQ.containsMatchIn(t) || dateQ.containsMatchIn(t)) return Match("time_date", JSONObject())
 
@@ -70,6 +97,27 @@ object FastPath {
             if (app.isNotEmpty() && app.split(" ").size <= 3) return Match("open_app", JSONObject().put("app", app))
         }
         return null
+    }
+
+    private fun msg(app: String, contact: String, message: String): Match? {
+        val c = contact.trim().trim('"', '\'')
+        val m = message.trim().trim('"', '\'')
+        if (c.isEmpty() || m.isEmpty()) return null
+        val a = when (app.lowercase().replace(" ", "")) {
+            "insta", "instagram" -> "Instagram"
+            "snap", "snapchat" -> "Snapchat"
+            "telegram" -> "Telegram"
+            else -> "WhatsApp"
+        }
+        return Match("send_message", JSONObject().put("app", a).put("contact", c).put("message", m))
+    }
+
+    private fun call(target: String): Match? {
+        val x = target.trim().trim('"', '\'')
+        if (x.isEmpty() || Regex("\\b(on|in|via)\\b", I).containsMatchIn(x)) return null // "call X on whatsapp" -> LLM
+        return if (Regex("^[+\\d\\s-]{3,}$").matches(x))
+            Match("call_contact", JSONObject().put("number", x.filter { it.isDigit() || it == '+' }))
+        else Match("call_contact", JSONObject().put("name", x))
     }
 
     private fun play(query: String, app: String): Match? {
