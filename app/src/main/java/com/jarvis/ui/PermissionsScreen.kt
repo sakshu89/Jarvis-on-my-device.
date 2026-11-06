@@ -3,6 +3,7 @@ package com.jarvis.ui
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -25,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -67,6 +69,7 @@ fun PermissionsScreen(firstRun: Boolean, onDone: () -> Unit) {
     val tick = rememberResumeTick()
     val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { tick2 -> tick2.hashCode() }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { tick2 -> tick2.hashCode() }
+    val phoneLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r -> r.hashCode() }
     var refresh by remember { mutableIntStateOf(0) }
     @Suppress("UNUSED_VARIABLE") val key = tick + refresh
 
@@ -93,6 +96,14 @@ fun PermissionsScreen(firstRun: Boolean, onDone: () -> Unit) {
             else ctx.open(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName))
             refresh++
         }
+
+        PermRow(
+            "Contacts & Phone",
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(ctx, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED,
+            "Lets JARVIS find a contact by name and place a call when you ask. Every call asks for your approval first.",
+            "Tap Allow, or enable Contacts and Phone in App info > Permissions.", "ALLOW"
+        ) { phoneLauncher.launch(arrayOf(Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE)); refresh++ }
 
         PermRow(
             "Accessibility service", PermissionStatus.accessibility(ctx),
