@@ -12,6 +12,9 @@ import com.jarvis.tools.AnalyzeScreenTool
 import com.jarvis.tools.BackTool
 import com.jarvis.tools.BrowserTool
 import com.jarvis.tools.CalculatorTool
+import com.jarvis.tools.CallContactTool
+import com.jarvis.tools.LockPhoneTool
+import com.jarvis.tools.UnlockPhoneTool
 import com.jarvis.tools.ClipboardTool
 import com.jarvis.tools.DeviceInfoTool
 import com.jarvis.tools.FileTool
@@ -37,6 +40,9 @@ fun buildRegistry(g: Graph): ToolRegistry = ToolRegistry().apply {
     register(SetTimerTool(app))
     register(SetAlarmTool(app))
     register(SendMessageTool(g))
+    register(CallContactTool(app))
+    register(LockPhoneTool())
+    register(UnlockPhoneTool(app))
     register(FindUiElementTool())
     register(AccessibilityActionTool())
     register(TapTool())
