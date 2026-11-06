@@ -52,7 +52,7 @@ object Http {
         url: String,
         headers: Map<String, String> = emptyMap(),
         body: String? = null,
-        timeoutMs: Int = 25_000
+        timeoutMs: Int = 180_000
     ): String = withContext(Dispatchers.IO) {
         val c = URL(url).openConnection() as HttpURLConnection
         try {
@@ -155,7 +155,7 @@ class OpenAICompatProvider(private val baseUrl: String, private val key: String,
         if (!baseUrl.startsWith("https://") && !isLocalUrl(baseUrl)) throw AIException("Base URL must start with https:// (plain http:// is only allowed for a server on this phone, e.g. http://127.0.0.1:8080/v1).")
         val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", system))
         messages.mergedByRole().forEach { msgs.put(JSONObject().put("role", it.role).put("content", it.content)) }
-        val body = JSONObject().put("model", model).put("messages", msgs).put("temperature", 0.3)
+        val body = JSONObject().put("model", model).put("messages", msgs).put("temperature", 0.3).put("max_tokens", 300)
         if (json) body.put("response_format", JSONObject().put("type", "json_object"))
         val res = try {
             Http.request(
