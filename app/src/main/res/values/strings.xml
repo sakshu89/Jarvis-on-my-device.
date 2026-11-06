@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">JARVIS</string>
+    <string name="accessibility_description">Lets JARVIS read the screen and tap, swipe and type in other apps ONLY when you give it a command. JARVIS never operates banking, payment or password apps, and asks before sending messages. You can switch it off any time.</string>
+</resources>

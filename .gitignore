@@ -1,0 +1,16 @@
+*.iml
+.gradle/
+build/
+local.properties
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Secrets - NEVER commit these
+*.jks
+*.keystore
+.env
+secrets.properties
+keystore.b64
